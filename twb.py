@@ -12,7 +12,7 @@ from core.extractors import Extractor
 from core.request import WebWrapper
 from game.config_manager import ConfigManager
 from game.village import Village
-from helpers.helpers import internet_online
+from helpers.helpers import internet_online, print_sleep_info
 from manager import VillageManager
 
 coloredlogs.install(
@@ -58,7 +58,7 @@ class TWB:
                 self.wait_for_internet()
             else:
                 config = self.config_manager.config
-                self.update_config_if_needed(config)
+                self.config_manager.update_config_if_needed(config)
                 self.run_villages(config)
                 self.sleep_between_runs()
 
@@ -108,7 +108,7 @@ class TWB:
     def wait_for_internet(self):
         logging.info("Internet seems to be down, waiting till it's back online...")
         sleep_time = self.calculate_sleep_time()
-        self.print_sleep_info(sleep_time)
+        print_sleep_info(sleep_time)
         time.sleep(sleep_time)
 
     def calculate_sleep_time(self):
@@ -141,13 +141,6 @@ class TWB:
         village.run(config=config)
         self.manage_defense_states(village)
 
-    def update_config_if_needed(self, config):
-        overview_page = self.wrapper.get_url("game.php?screen=overview_villages")
-        changed, new_config = self.get_world_options(overview_page, config)
-        if changed:
-            print("Updated world options")
-            self.config_manager.update_config(new_config)
-
     def set_village_name_template(self, village, config, vnum):
         if (
             "auto_set_village_names" in config["bot"]
@@ -173,7 +166,7 @@ class TWB:
 
     def sleep_between_runs(self):
         sleep_time = self.calculate_sleep_time()
-        self.print_sleep_info(sleep_time)
+        print_sleep_info(sleep_time)
         VillageManager.farm_manager(verbose=True)
         time.sleep(sleep_time)
 
