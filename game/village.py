@@ -9,7 +9,7 @@ from core.extractors import Extractor
 from core.templates import TemplateManager
 from core.twstats import TwStats
 from game.attack import AttackManager
-from game.buildingmanager import BuildingManager
+from game.building_manager import BuildingManager
 from game.defence_manager import DefenceManager
 from game.map import Map
 from game.reports import ReportManager
@@ -19,7 +19,7 @@ from game.troopmanager import TroopManager
 
 
 class Village:
-    builder = None
+    building_manager = None
 
     wrapper = None
     resources = {}
@@ -47,12 +47,12 @@ class Village:
         self.resource_manager = ResourceManager(
             wrapper=self.wrapper, village_id=self.village_id
         )
-        self.def_man = DefenceManager(
-            wrapper=self.wrapper, village_id=self.village_id
-        )
+        self.def_man = DefenceManager(wrapper=self.wrapper, village_id=self.village_id)
         self.def_man.map = self.map
         self.units = TroopManager(wrapper=self.wrapper, village_id=self.village_id)
-        self.builder = BuildingManager(wrapper=self.wrapper, village_id=self.village_id)
+        self.building_manager = BuildingManager(
+            wrapper=self.wrapper, village_id=self.village_id
+        )
         self.report_manager = ReportManager(
             wrapper=self.wrapper, village_id=self.village_id
         )
@@ -194,7 +194,6 @@ class Village:
         if not self.game_data:
             return
 
-
         if not self.def_man.units:
             self.def_man.units = self.units
 
@@ -250,7 +249,7 @@ class Village:
         ):
             return False
 
-        self.builder.start_update(
+        self.building_manager.start_update(
             build=self.get_config(
                 section="building", parameter="manage_buildings", default=True
             ),
@@ -261,27 +260,43 @@ class Village:
         if not self.game_data:
             return
 
-        unit_config = self.get_village_config(self.village_id, parameter="units", default=None)
+        unit_config = self.get_village_config(
+            self.village_id, parameter="units", default=None
+        )
         if not unit_config:
-            self.logger.warning("Village %d does not have 'building' config override!" % self.village_id)
-            unit_config = self.get_config(section="units", parameter="default", default="basic")
+            self.logger.warning(
+                "Village %d does not have 'building' config override!" % self.village_id
+            )
+            unit_config = self.get_config(
+                section="units", parameter="default", default="basic"
+            )
 
-        self.units.template = TemplateManager.get_template(category="troops", template=unit_config, output_json=True)
-        self.entry = self.units.get_template_action(self.builder.levels)
+        self.units.template = TemplateManager.get_template(
+            category="troops", template=unit_config, output_json=True
+        )
+        self.entry = self.units.get_template_action(self.building_manager.levels)
 
         if self.entry:
             wanted_build = self.entry["build"]
             if self.units.wanted != wanted_build:
-                self.logger.info("%s as wanted units for current village" % str(wanted_build))
+                self.logger.info(
+                    "%s as wanted units for current village" % str(wanted_build)
+                )
                 self.units.wanted = wanted_build
 
         for disabled in self.disabled_units:
             self.units.wanted_levels.pop(disabled, None)
         if self.units.wanted_levels:
-            self.logger.info("%s as wanted upgrades for current village" % str(self.units.wanted_levels))
+            self.logger.info(
+                "%s as wanted upgrades for current village"
+                % str(self.units.wanted_levels)
+            )
 
         self.units.update_totals()
-        if self.get_config(section="units", parameter="upgrade", default=False) and self.units.wanted_levels:
+        if (
+            self.get_config(section="units", parameter="upgrade", default=False)
+            and self.units.wanted_levels
+        ):
             self.units.attempt_upgrade()
 
     def manage_snobs(self):
@@ -290,7 +305,7 @@ class Village:
 
         if (
             self.get_village_config(self.village_id, parameter="snobs", default=None)
-            and self.builder.get_level("snob") > 0
+            and self.building_manager.get_level("snob") > 0
         ):
             if not self.snob_man:
                 self.snob_man = SnobManager(
@@ -301,7 +316,7 @@ class Village:
             self.snob_man.wanted = self.get_village_config(
                 self.village_id, parameter="snobs", default=0
             )
-            self.snob_man.building_level = self.builder.get_level("snob")
+            self.snob_man.building_level = self.building_manager.get_level("snob")
             self.snob_man.run()
 
     def manage_recruitment(self):
@@ -341,7 +356,7 @@ class Village:
                         self.resource_manager.requested.pop(f"{x}", None)
             else:
                 for building in self.units.wanted:
-                    if not self.builder.get_level(building):
+                    if not self.building_manager.get_level(building):
                         self.logger.debug(
                             "Recruit of %s will be ignored because building is not (yet) available"
                             % building
@@ -352,7 +367,6 @@ class Village:
     def manage_farms(self):
         if not self.game_data:
             return
-
 
         self.attack_manager.target_high_points = self.get_config(
             section="farms", parameter="attack_higher_points", default=False
@@ -410,7 +424,7 @@ class Village:
 
         if self.get_config(
             section="market", parameter="auto_trade", default=False
-        ) and self.builder.get_level("market"):
+        ) and self.building_manager.get_level("market"):
             self.resource_manager.manage_market(
                 drop_existing=self.get_config(
                     section="market", parameter="auto_remove", default=True
@@ -535,8 +549,8 @@ class Village:
             "resources": self.resource_manager.actual,
             "required_resources": self.resource_manager.requested,
             "available_troops": self.units.troops,
-            "building_levels": self.builder.levels,
-            "building_queue": self.builder.queue,
+            "building_levels": self.building_manager.levels,
+            "building_queue": self.building_manager.queue,
             "troops": self.units.total_troops,
             "under_attack": self.def_man.under_attack,
             "last_run": int(time.time()),
