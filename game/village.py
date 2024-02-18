@@ -10,6 +10,7 @@ from core.templates import TemplateManager
 from core.twstats import TwStats
 from game.attack import AttackManager
 from game.buildingmanager import BuildingManager
+from game.config_manager import ConfigManager
 from game.defence_manager import DefenceManager
 from game.map import Map
 from game.reports import ReportManager
@@ -19,9 +20,8 @@ from game.troopmanager import TroopManager
 
 
 class Village:
-    village_id = None
     builder = None
-    units = None
+
     wrapper = None
     resources = {}
     game_data = {}
@@ -30,7 +30,6 @@ class Village:
     area = None
     snob_man = None
     attack = None
-    resource_manager = None
     def_man = None
     report_manager = None
     config = None
@@ -39,38 +38,26 @@ class Village:
     twp = TwStats()
 
     def __init__(self, village_id=None, wrapper=None):
+        # self.config = ConfigManager("config.json")
         self.entry = None
         self.disabled_units = []
         self.data = None
         self.village_id = village_id
         self.wrapper = wrapper
-
-    def get_config(self, section, parameter, default=None):
-        if section not in self.config:
-            self.logger.warning("Configuration section %s does not exist!" % section)
-            return default
-        if parameter not in self.config[section]:
-            self.logger.warning(
-                "Configuration parameter %s:%s does not exist!" % (section, parameter)
-            )
-            return default
-        return self.config[section][parameter]
-
-    def get_village_config(self, village_id, parameter, default=None):
-        if village_id not in self.config["villages"]:
-            return default
-        vdata = self.config["villages"][village_id]
-        if parameter not in vdata:
-            self.logger.warning(
-                "Village %s configuration parameter %s does not exist!"
-                % (village_id, parameter)
-            )
-            return default
-        return vdata[parameter]
+        self.resource_manager = ResourceManager(
+            wrapper=self.wrapper, village_id=self.village_id
+        )
+        self.units = TroopManager(wrapper=self.wrapper, village_id=self.village_id)
+        self.builder = BuildingManager(wrapper=self.wrapper, village_id=self.village_id)
+        self.report_manager = ReportManager(
+            wrapper=self.wrapper, village_id=self.village_id
+        )
 
     def run(self, config=None):
         self.config = config
-        self.wrapper.delay = self.get_config(section="bot", parameter="delay_factor", default=1.0)
+        self.wrapper.delay = self.get_config(
+            section="bot", parameter="delay_factor", default=1.0
+        )
 
         if not self.setup_village():
             return None
@@ -97,11 +84,36 @@ class Village:
         self.set_cache_vars()
         self.logger.info("Village cycle done, returning to overview")
 
+    def get_config(self, section, parameter, default=None):
+        if section not in self.config:
+            self.logger.warning("Configuration section %s does not exist!" % section)
+            return default
+        if parameter not in self.config[section]:
+            self.logger.warning(
+                "Configuration parameter %s:%s does not exist!" % (section, parameter)
+            )
+            return default
+        return self.config[section][parameter]
+
+    def get_village_config(self, village_id, parameter, default=None):
+        if village_id not in self.config["villages"]:
+            return default
+        vdata = self.config["villages"][village_id]
+        if parameter not in vdata:
+            self.logger.warning(
+                "Village %s configuration parameter %s does not exist!"
+                % (village_id, parameter)
+            )
+            return default
+        return vdata[parameter]
+
     def setup_village(self):
         if not self.village_id:
             self.data = self.wrapper.get_url("game.php?screen=overview&intro")
         else:
-            self.data = self.wrapper.get_url(f"game.php?village={self.village_id}&screen=overview")
+            self.data = self.wrapper.get_url(
+                f"game.php?village={self.village_id}&screen=overview"
+            )
 
         if not self.data:
             print("Error: No data available to extract game state.")
@@ -109,12 +121,16 @@ class Village:
 
         self.game_data = Extractor.game_state(self.data)
         if not self.game_data:
-            print("Error: Unable to retrieve village data. Check if self.game_data is properly initialized.")
+            print(
+                "Error: Unable to retrieve village data. Check if self.game_data is properly initialized."
+            )
             return False
 
         if not self.village_id:
             self.village_id = str(self.game_data["village"]["id"])
-            self.logger = logging.getLogger("Village %s" % self.game_data["village"]["name"])
+            self.logger = logging.getLogger(
+                "Village %s" % self.game_data["village"]["name"]
+            )
             self.logger.info("Read game state for village")
         else:
             village_name = self.game_data["village"]["name"]
@@ -130,10 +146,15 @@ class Village:
 
     def manage_game_data(self):
         if not self.game_data:
-            self.logger.error("Error reading game data for village %s" % self.village_id)
+            self.logger.error(
+                "Error reading game data for village %s" % self.village_id
+            )
             return False
 
-        if self.village_set_name and self.game_data["village"]["name"] != self.village_set_name:
+        if (
+            self.village_set_name
+            and self.game_data["village"]["name"] != self.village_set_name
+        ):
             self.logger.name = "Village %s" % self.village_set_name
 
         return True
@@ -147,10 +168,6 @@ class Village:
     def manage_resources(self):
         if not self.game_data:
             return
-
-        if not self.resource_manager:
-            self.resource_manager = ResourceManager(wrapper=self.wrapper, village_id=self.village_id)
-
         self.resource_manager.update(self.game_data)
         self.wrapper.reporter.report(
             self.village_id, "TWB_PRE_RESOURCE", str(self.resource_manager.actual)
@@ -160,9 +177,6 @@ class Village:
         if not self.game_data:
             return
 
-        if not self.report_manager:
-            self.report_manager = ReportManager(wrapper=self.wrapper, village_id=self.village_id)
-
         self.report_manager.read(full_run=False)
 
     def manage_defense(self):
@@ -170,7 +184,9 @@ class Village:
             return
 
         if not self.def_man:
-            self.def_man = DefenceManager(wrapper=self.wrapper, village_id=self.village_id)
+            self.def_man = DefenceManager(
+                wrapper=self.wrapper, village_id=self.village_id
+            )
             self.def_man.map = self.area
 
         if not self.def_man.units:
@@ -202,12 +218,12 @@ class Village:
 
         disabled_units = []
         if not self.get_config(
-                section="world", parameter="archers_enabled", default=True
+            section="world", parameter="archers_enabled", default=True
         ):
             disabled_units.extend(["archer", "marcher"])
 
         if not self.get_config(
-                section="world", parameter="building_destruction_enabled", default=True
+            section="world", parameter="building_destruction_enabled", default=True
         ):
             disabled_units.extend(["ram", "catapult"])
 
@@ -223,11 +239,9 @@ class Village:
         if not self.game_data:
             return
 
-        if not self.builder:
-            self.builder = BuildingManager(wrapper=self.wrapper, village_id=self.village_id)
-            self.builder.resource_manager = self.resource_manager
-
-        if not self.get_village_config(self.village_id, parameter="managed", default=False):
+        if not self.get_village_config(
+            self.village_id, parameter="managed", default=False
+        ):
             return False
 
         self.builder.start_update(
@@ -241,44 +255,27 @@ class Village:
         if not self.game_data:
             return
 
-        if not self.units:
-            self.units = TroopManager(wrapper=self.wrapper, village_id=self.village_id)
-            self.units.resource_manager = self.resource_manager
-
-        unit_config = self.get_village_config(
-            self.village_id, parameter="units", default=None
-        )
+        unit_config = self.get_village_config(self.village_id, parameter="units", default=None)
         if not unit_config:
-            self.logger.warning(
-                "Village %d does not have 'building' config override!" % self.village_id
-            )
-            unit_config = self.get_config(
-                section="units", parameter="default", default="basic"
-            )
-        self.units.template = TemplateManager.get_template(
-            category="troops", template=unit_config, output_json=True
-        )
+            self.logger.warning("Village %d does not have 'building' config override!" % self.village_id)
+            unit_config = self.get_config(section="units", parameter="default", default="basic")
+
+        self.units.template = TemplateManager.get_template(category="troops", template=unit_config, output_json=True)
         self.entry = self.units.get_template_action(self.builder.levels)
 
-        if self.entry and self.units.wanted != self.entry["build"]:
-            self.logger.info(
-                "%s as wanted units for current village" % (str(self.entry["build"]))
-            )
-            self.units.wanted = self.entry["build"]
+        if self.entry:
+            wanted_build = self.entry["build"]
+            if self.units.wanted != wanted_build:
+                self.logger.info("%s as wanted units for current village" % str(wanted_build))
+                self.units.wanted = wanted_build
 
-        if self.units.wanted_levels != {}:
-            for disabled in self.disabled_units:
-                self.units.wanted_levels.pop(disabled, None)
-            self.logger.info(
-                "%s as wanted upgrades for current village"
-                % (str(self.units.wanted_levels))
-            )
+        for disabled in self.disabled_units:
+            self.units.wanted_levels.pop(disabled, None)
+        if self.units.wanted_levels:
+            self.logger.info("%s as wanted upgrades for current village" % str(self.units.wanted_levels))
 
         self.units.update_totals()
-        if (
-                self.get_config(section="units", parameter="upgrade", default=False)
-                and self.units.wanted_levels != {}
-        ):
+        if self.get_config(section="units", parameter="upgrade", default=False) and self.units.wanted_levels:
             self.units.attempt_upgrade()
 
     def manage_snobs(self):
@@ -286,8 +283,8 @@ class Village:
             return
 
         if (
-                self.get_village_config(self.village_id, parameter="snobs", default=None)
-                and self.builder.get_level("snob") > 0
+            self.get_village_config(self.village_id, parameter="snobs", default=None)
+            and self.builder.get_level("snob") > 0
         ):
             if not self.snob_man:
                 self.snob_man = SnobManager(
@@ -313,10 +310,10 @@ class Village:
                 section="units", parameter="randomize_unit_queue", default=True
             )
             if (
-                    self.get_village_config(
-                        self.village_id, parameter="prioritize_building", default=False
-                    )
-                    and not self.resource_manager.can_recruit()
+                self.get_village_config(
+                    self.village_id, parameter="prioritize_building", default=False
+                )
+                and not self.resource_manager.can_recruit()
             ):
                 self.logger.info(
                     "Not recruiting because builder has insufficient funds"
@@ -325,12 +322,12 @@ class Village:
                     if "recruitment_" in x:
                         self.resource_manager.requested.pop(f"{x}", None)
             elif (
-                    self.get_village_config(
-                        self.village_id, parameter="prioritize_snob", default=False
-                    )
-                    and self.snob_man
-                    and self.snob_man.can_snob
-                    and self.snob_man.is_incomplete
+                self.get_village_config(
+                    self.village_id, parameter="prioritize_snob", default=False
+                )
+                and self.snob_man
+                and self.snob_man.can_snob
+                and self.snob_man.is_incomplete
             ):
                 self.logger.info("Not recruiting because snob has insufficient funds")
                 for x in list(self.resource_manager.requested.keys()):
@@ -387,8 +384,8 @@ class Village:
         if self.entry:
             self.attack.template = self.entry["farm"]
         if (
-                self.get_config(section="farms", parameter="farm", default=False)
-                # and not self.def_man.under_attack todo fix and add to config
+            self.get_config(section="farms", parameter="farm", default=False)
+            # and not self.def_man.under_attack todo fix and add to config
         ):
             self.attack.extra_farm = self.get_village_config(
                 self.village_id, parameter="additional_farms", default=[]
@@ -417,10 +414,9 @@ class Village:
         if not self.game_data:
             return
 
-        if (
-                self.get_config(section="market", parameter="auto_trade", default=False)
-                and self.builder.get_level("market")
-        ):
+        if self.get_config(
+            section="market", parameter="auto_trade", default=False
+        ) and self.builder.get_level("market"):
             self.resource_manager.manage_market(
                 drop_existing=self.get_config(
                     section="market", parameter="auto_remove", default=True
@@ -512,7 +508,8 @@ class Village:
             # First check if there is enough room for storing the reward
             for t_resource in reward["reward"]:
                 if (
-                    self.resource_manager.storage - self.resource_manager.actual[t_resource]
+                    self.resource_manager.storage
+                    - self.resource_manager.actual[t_resource]
                     < reward["reward"][t_resource]
                 ):
                     self.logger.info(

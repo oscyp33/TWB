@@ -1,21 +1,18 @@
 import logging
-import time
-import datetime
-import random
-import coloredlogs
-import sys
-import json
-import copy
 import os
-import collections
+import pathlib
+import random
+import sys
+import time
 import traceback
 
 import coloredlogs
-import requests
 
 from core.extractors import Extractor
 from core.request import WebWrapper
+from game.config_manager import ConfigManager
 from game.village import Village
+from helpers.helpers import internet_online
 from manager import VillageManager
 
 coloredlogs.install(
@@ -38,345 +35,158 @@ class TWB:
 
     def __init__(self):
         self.report_manager = None
-
-    @staticmethod
-    def internet_online():
-        try:
-            requests.get("https://github.com/stefan2200/TWB", timeout=(10, 60))
-            return True
-        except requests.Timeout:
-            return False
-
-    def manual_config(self):
-        logging.info(
-            "Hello and welcome, it looks like you don't have a config file (yet)"
+        self.config_manager = ConfigManager()
+        self.config = self.config_manager.config
+        self.defence_states = {}
+        self.result_villages = None
+        self.wrapper = WebWrapper(
+            self.config["server"]["endpoint"],
+            server=self.config["server"]["server"],
+            endpoint=self.config["server"]["endpoint"],
+            reporter_enabled=self.config["reporting"]["enabled"],
+            reporter_constr=self.config["reporting"]["connection_string"],
         )
-        if not os.path.exists("config.example.json"):
-            logging.error(
-                "Oh no, config.example.json and config.json do not exist. You broke something didn't you?"
-            )
-            return False
-        logging.info(
-            "Please enter the current (logged-in) URL of the world you are playing on (or q to exit)"
-        )
-        input_url = input("URL: ")
-        if input_url.strip() == "q":
-            return False
-        server = input_url.split("://")[1].split("/")[0]
-        game_endpoint = input_url.split("?")[0]
-        sub_parts = server.split(".")[0]
-        logging.info("Game endpoint: %s" % game_endpoint)
-        logging.info("World: %s" % sub_parts.upper())
-        check = input("Does this look correct? [nY]")
-        if "y" in check.lower():
-            browser_ua = input(
-                "Enter your browser user agent "
-                "(to lower detection rates). Just google what is my user agent> "
-            )
-            if browser_ua and len(browser_ua) < 10:
-                logging.error(
-                    "It should start with Chrome, Firefox or something. Please try again"
-                )
-                return self.manual_config()
-            browser_ua = browser_ua.strip()
-            disclaimer = """
-            Read carefully: Please note the use of this bot can cause bans, kicks, annoyances and other stuff.
-            I do my best to make the bot as undetectable as possible but most issues / bans are config related.
-            Make sure you keep your bot sleeps at a reasonable numbers and please don't blame me if your account gets banned ;) 
-            PS. make sure to regularly (1-2 per day) logout/login using the browser session and supply the new cookie string. 
-            Using a single session for 24h straight will probably result in a ban
-            """
-            logging.info(disclaimer)
-            final_check = input(
-                "Do you understand this and still wish to continue, please type: yes and press enter> "
-            )
-            if "yes" not in final_check.lower():
-                logging.info("Goodbye :)")
-                sys.exit(0)
-            root_directory = os.path.dirname(__file__)
-            with open(
-                os.path.join(root_directory, "config.example.json"), "r"
-            ) as template_file:
-                template = json.load(
-                    template_file, object_pairs_hook=collections.OrderedDict
-                )
-                template["server"]["endpoint"] = game_endpoint
-                template["server"]["server"] = sub_parts.lower()
-                template["bot"]["user_agent"] = browser_ua
-                with open(os.path.join(root_directory, "config.json"), "w") as newcf:
-                    json.dump(template, newcf, indent=2, sort_keys=False)
-                    print("Deployed new configuration file")
-                    return True
-        print("Make sure your url starts with https:// and contains the game.php? part")
-        return self.manual_config()
+        self.wrapper.start()
 
-    def config(self):
-        template = None
-        root_directory = os.path.dirname(__file__)
-        if os.path.exists(os.path.join(root_directory, "config.example.json")):
-            with open(os.path.join(root_directory, "config.example.json"), "r") as template_file:
-                template = json.load(
-                    template_file, object_pairs_hook=collections.OrderedDict
-                )
-        if not os.path.exists(os.path.join(root_directory, "config.json")):
-            if self.manual_config():
-                return self.config()
+    def run(self):
+        for vid in self.config["villages"]:
+            v = Village(wrapper=self.wrapper, village_id=vid)
+            self.villages.append(v)
+
+        while self.should_run:
+            if not internet_online():
+                self.wait_for_internet()
             else:
-                print("Unable to start without a valid config file")
-                sys.exit(1)
-        config = None
-        with open(os.path.join(root_directory, "config.json"), "r") as f:
-            config = json.load(f, object_pairs_hook=collections.OrderedDict)
-        if template and config["build"]["version"] != template["build"]["version"]:
-            print(
-                "Outdated config file found, merging (old copy saved as config.bak)\n"
-                "Remove config.example.json to disable this behaviour"
-            )
-            with open(os.path.join(root_directory, "config.bak"), "w") as backup:
-                json.dump(config, backup, indent=2, sort_keys=False)
-            config = self.merge_configs(config, template)
-            with open(os.path.join(root_directory, "config.json"), "w") as newcf:
-                json.dump(config, newcf, indent=2, sort_keys=False)
-                print("Deployed new configuration file")
-        return config
-
-    def merge_configs(self, old_config, new_config):
-        to_ignore = ["villages", "build"]
-        for section in old_config:
-            if section not in to_ignore:
-                for entry in old_config[section]:
-                    if entry in new_config[section]:
-                        new_config[section][entry] = old_config[section][entry]
-        villages = collections.OrderedDict()
-        for v in old_config["villages"]:
-            nc = new_config["village_template"]
-            vdata = old_config["villages"][v]
-            for entry in nc:
-                if entry not in vdata:
-                    vdata[entry] = nc[entry]
-            villages[v] = vdata
-        new_config["villages"] = villages
-        return new_config
+                config = self.config_manager.config
+                self.update_config_if_needed(config)
+                self.run_villages(config)
+                self.sleep_between_runs()
 
     def get_overview(self, config):
         result_get = self.wrapper.get_url("game.php?screen=overview_villages")
-        result_villages = None
+
         has_new_villages = False
         if config["bot"].get("add_new_villages", False):
-            result_villages = Extractor.village_ids_from_overview(result_get)
-            for found_vid in result_villages:
+            self.result_villages = Extractor.village_ids_from_overview(result_get)
+            for found_vid in self.result_villages:
                 if found_vid not in config["villages"]:
-                    print(
+                    logging.info(
                         "Village %s was found but no config entry was found. Adding automatically"
                         % found_vid
                     )
-                    self.add_village(vid=found_vid)
+                    self.config_manager.add_village(vid=found_vid)
                     has_new_villages = True
             if has_new_villages:
                 return self.get_overview(self.config())
 
-        return result_villages, result_get, config
-
-    def add_village(self, vid, template=None):
-        original = self.config()
-        root_directory = os.path.dirname(__file__)
-        with open(os.path.join(root_directory, "config.bak"), "w") as backup:
-            json.dump(original, backup, indent=2, sort_keys=False)
-        if not template and "village_template" not in original:
-            print("Village entry %s could not be added to the config file!" % vid)
-            return
-        original["villages"][vid] = (
-            template if template else original["village_template"]
-        )
-        with open(os.path.join(root_directory, "config.json"), "w") as newcf:
-            json.dump(original, newcf, indent=2, sort_keys=False)
-            print("Deployed new configuration file")
+        return self.result_villages, result_get, config
 
     def get_world_options(self, overview_page, config):
+        options_to_check = [
+            ("flags_enabled", "screen=flags"),
+            ("knight_enabled", "screen=statue"),
+            ("boosters_enabled", "screen=inventory"),
+            ("quests_enabled", "Quests.setQuestData"),
+        ]
+
         changed = False
-        if config["world"]["flags_enabled"] is None:
-            changed = True
-            if "screen=flags" in overview_page:
-                config["world"]["flags_enabled"] = True
-            else:
-                config["world"]["flags_enabled"] = False
-        if config["world"]["knight_enabled"] is None:
-            changed = True
-            if "screen=statue" in overview_page:
-                config["world"]["knight_enabled"] = True
-            else:
-                config["world"]["knight_enabled"] = False
-
-        if config["world"]["boosters_enabled"] is None:
-            changed = True
-            if "screen=inventory" in overview_page:
-                config["world"]["boosters_enabled"] = True
-            else:
-                config["world"]["boosters_enabled"] = False
-
-        if config["world"]["quests_enabled"] is None:
-            changed = True
-            if "Quests.setQuestData" in overview_page:
-                config["world"]["quests_enabled"] = True
-            else:
-                config["world"]["quests_enabled"] = False
+        for option, pattern in options_to_check:
+            if config["world"][option] is None:
+                changed = True
+                if pattern in overview_page:
+                    config["world"][option] = True
+                else:
+                    config["world"][option] = False
 
         return changed, config
-    
+
     def is_active_hours(self, config):
-    
         active_h = [int(x) for x in config["bot"]["active_hours"].split("-")]
         get_h = time.localtime().tm_hour
         return get_h in range(active_h[0], active_h[1])
 
-    def run(self):
-        config = self.config()
-        if not self.internet_online():
-            print("Internet seems to be down, waiting till its back online...")
-            sleep = 0
-            if self.is_active_hours(config=config):
-                sleep = config["bot"]["active_delay"]
-            else:
-                if config["bot"]["inactive_still_active"]:
-                    sleep = config["bot"]["inactive_delay"]
+    def wait_for_internet(self):
+        logging.info("Internet seems to be down, waiting till it's back online...")
+        sleep_time = self.calculate_sleep_time()
+        self.print_sleep_info(sleep_time)
+        time.sleep(sleep_time)
 
-            sleep += random.randint(20, 120)
-            dtn = datetime.datetime.now()
-            dt_next = dtn + datetime.timedelta(0, sleep)
-            print(
-                "Dead for %f.2 minutes (next run at: %s)" % (sleep / 60, dt_next.time())
-            )
-            time.sleep(sleep)
-            return False
+    def calculate_sleep_time(self):
+        sleep = 0
+        if self.is_active_hours(self.config):
+            sleep = self.config["bot"]["active_delay"]
+        elif self.config["bot"]["inactive_still_active"]:
+            sleep = self.config["bot"]["inactive_delay"]
 
-        self.wrapper = WebWrapper(
-            config["server"]["endpoint"],
-            server=config["server"]["server"],
-            endpoint=config["server"]["endpoint"],
-            reporter_enabled=config["reporting"]["enabled"],
-            reporter_constr=config["reporting"]["connection_string"],
-        )
+        return sleep + random.randint(20, 120)
 
-        self.wrapper.start()
-        if not config["bot"].get("user_agent", None):
-            print(
-                "No custom user agent was supplied, this will likely get you banned."
-                "Please set the bot -> user_agent parameter to your browsers one. "
-                "Just google what is my user agent"
+    def run_villages(self, config):
+        _, res_text, config = self.get_overview(config)
+        has_changed, new_cf = self.get_world_options(res_text.text, config)
+        if has_changed:
+            logging.info("Updated world options")
+            config = self.config_manager.merge_configs(config, new_cf)
+            self.config_manager.deploy_new_configuration(config)
+        for village_number, village in enumerate(self.villages):
+            self.manage_village(village, config, village_number)
+
+    def manage_village(self, village, config, village_number):
+        if self.result_villages and village.village_id not in self.result_villages:
+            logging.info(
+                f"Village {village.village_id} will be ignored because it is not available anymore"
             )
             return
-        self.wrapper.headers["user-agent"] = config["bot"]["user_agent"]
-        for vid in config["villages"]:
-            v = Village(wrapper=self.wrapper, village_id=vid)
-            self.villages.append(copy.deepcopy(v))
-        # setup additional builder
-        rm = None
-        defense_states = {}
-        while self.should_run:
-            if not self.internet_online():
-                print("Internet seems to be down, waiting till its back online...")
-                sleep = 0
-                if self.is_active_hours(config=config):
-                    sleep = config["bot"]["active_delay"]
-                else:
-                    if config["bot"]["inactive_still_active"]:
-                        sleep = config["bot"]["inactive_delay"]
 
-                sleep += random.randint(20, 120)
-                dtn = datetime.datetime.now()
-                dt_next = dtn + datetime.timedelta(0, sleep)
-                print(
-                    "Dead for %f.2 minutes (next run at: %s)" % (sleep / 60, dt_next.time())
-                )
-                time.sleep(sleep)
-            else:
-                config = self.config()
-                result_villages, res_text, config = self.get_overview(config)
-                has_changed, new_cf = self.get_world_options(res_text.text, config)
-                if has_changed:
-                    print("Updated world options")
-                    config = self.merge_configs(config, new_cf)
-                    with open(os.path.join(os.path.dirname(__file__), "config.json"), "w") as newcf:
-                        json.dump(config, newcf, indent=2, sort_keys=False)
-                        print("Deployed new configuration file")
-                vnum = 1
-                for village in self.villages:
-                    if result_villages and village.village_id not in result_villages:
-                        print(
-                            "Village %s will be ignored because it is not available anymore"
-                            % village.village_id
-                        )
-                        continue
-                    if not self.report_manager:
-                        self.report_manager = village.report_manager
-                    else:
-                        village.report_manager = self.report_manager
-                    if (
-                        "auto_set_village_names" in config["bot"]
-                        and config["bot"]["auto_set_village_names"]
-                    ):
-                        template = config["bot"]["village_name_template"]
-                        fs = "%0" + str(config["bot"]["village_name_number_length"]) + "d"
-                        num_pad = fs % vnum
-                        template = template.replace("{num}", num_pad)
-                        village.village_set_name = template
+        self.set_village_name_template(village, config, village_number)
+        village.run(config=config)
+        self.manage_defense_states(village)
 
-                    village.run(config=config)
-                    if (
-                        village.get_config(
-                            section="units", parameter="manage_defence", default=False
-                        )
-                        and village.def_man
-                    ):
-                        defense_states[village.village_id] = (
-                            village.def_man.under_attack
-                            if village.def_man.allow_support_recv
-                            else False
-                        )
-                    vnum += 1
+    def update_config_if_needed(self, config):
+        overview_page = self.wrapper.get_url("game.php?screen=overview_villages")
+        changed, new_config = self.get_world_options(overview_page, config)
+        if changed:
+            print("Updated world options")
+            self.config_manager.update_config(new_config)
 
-                if len(defense_states) and config["farms"]["farm"]:
-                    for village in self.villages:
-                        print("Syncing attack states")
-                        village.def_man.my_other_villages = defense_states
+    def set_village_name_template(self, village, config, vnum):
+        if (
+            "auto_set_village_names" in config["bot"]
+            and config["bot"]["auto_set_village_names"]
+        ):
+            template = config["bot"]["village_name_template"]
+            num_pad = f"%0{config['bot']['village_name_number_length']}d" % vnum
+            template = template.replace("{num}", num_pad)
+            village.village_set_name = template
 
-                sleep = 0
-                if self.is_active_hours(config=config):
-                    sleep = config["bot"]["active_delay"]
-                else:
-                    if config["bot"]["inactive_still_active"]:
-                        sleep = config["bot"]["inactive_delay"]
+    def manage_defense_states(self, village):
+        if (
+            village.get_config(
+                section="units", parameter="manage_defence", default=False
+            )
+            and village.def_man
+        ):
+            self.defence_states[village.village_id] = (
+                village.def_man.under_attack
+                if village.def_man.allow_support_recv
+                else False
+            )
 
-                sleep += random.randint(20, 120)
-                dtn = datetime.datetime.now()
-                dt_next = dtn + datetime.timedelta(0, sleep)
-                self.runs += 1
-
-                VillageManager.farm_manager(verbose=True)
-                print(
-                    "Dead for %f.2 minutes (next run at: %s)" % (sleep / 60, dt_next.time())
-                )
-                sys.stdout.flush()
-                time.sleep(sleep)
+    def sleep_between_runs(self):
+        sleep_time = self.calculate_sleep_time()
+        self.print_sleep_info(sleep_time)
+        VillageManager.farm_manager(verbose=True)
+        time.sleep(sleep_time)
 
     def start(self):
-        root_directory = os.path.dirname(__file__)
-        if not os.path.exists(os.path.join(root_directory, "cache")):
-            os.mkdir(os.path.join(root_directory, "cache"))
-        if not os.path.exists(os.path.join(root_directory, "cache", "attacks")):
-            os.mkdir(os.path.join(root_directory, "cache", "attacks"))
-        if not os.path.exists(os.path.join(root_directory, "cache", "reports")):
-            os.mkdir(os.path.join(root_directory, "cache", "reports"))
-        if not os.path.exists(os.path.join(root_directory, "cache", "villages")):
-            os.mkdir(os.path.join(root_directory, "cache", "villages"))
-        if not os.path.exists(os.path.join(root_directory, "cache", "world")):
-            os.mkdir(os.path.join(root_directory, "cache", "world"))
-        if not os.path.exists(os.path.join(root_directory, "cache", "logs")):
-            os.mkdir(os.path.join(root_directory, "cache", "logs"))
-        if not os.path.exists(os.path.join(root_directory, "cache", "managed")):
-            os.mkdir(os.path.join(root_directory, "cache", "managed"))
-        if not os.path.exists(os.path.join(root_directory, "cache", "hunter")):
-            os.mkdir(os.path.join(root_directory, "cache", "hunter"))
+        root_directory = pathlib.Path(__file__).parent
+        (root_directory / "cache").mkdir(exist_ok=True)
+        (root_directory / "cache" / "attacks").mkdir(exist_ok=True)
+        (root_directory / "cache" / "reports").mkdir(exist_ok=True)
+        (root_directory / "cache" / "villages").mkdir(exist_ok=True)
+        (root_directory / "cache" / "world").mkdir(exist_ok=True)
+        (root_directory / "cache" / "logs").mkdir(exist_ok=True)
+        (root_directory / "cache" / "managed").mkdir(exist_ok=True)
+        (root_directory / "cache" / "hunter").mkdir(exist_ok=True)
 
         self.run()
 
@@ -389,4 +199,3 @@ for x in range(3):
         t.wrapper.reporter.report(0, "TWB_EXCEPTION", str(e))
         print("I crashed :(   %s" % str(e))
         traceback.print_exc()
-        pass
