@@ -26,7 +26,7 @@ class Village:
     game_data = {}
     logger = None
     force_troops = False
-    area = None
+    map = None
     snob_man = None
     attack_manager = None
     def_man = None
@@ -42,9 +42,15 @@ class Village:
         self.data = None
         self.village_id = village_id
         self.wrapper = wrapper
+        self.map = Map(wrapper=self.wrapper, village_id=self.village_id)
+        self.map.get_map()
         self.resource_manager = ResourceManager(
             wrapper=self.wrapper, village_id=self.village_id
         )
+        self.def_man = DefenceManager(
+            wrapper=self.wrapper, village_id=self.village_id
+        )
+        self.def_man.map = self.map
         self.units = TroopManager(wrapper=self.wrapper, village_id=self.village_id)
         self.builder = BuildingManager(wrapper=self.wrapper, village_id=self.village_id)
         self.report_manager = ReportManager(
@@ -54,7 +60,7 @@ class Village:
             wrapper=self.wrapper,
             village_id=self.village_id,
             troopmanager=self.units,
-            map=self.area,
+            map=self.map,
         )
         self.attack_manager.report_manager = self.report_manager
 
@@ -188,11 +194,6 @@ class Village:
         if not self.game_data:
             return
 
-        if not self.def_man:
-            self.def_man = DefenceManager(
-                wrapper=self.wrapper, village_id=self.village_id
-            )
-            self.def_man.map = self.area
 
         if not self.def_man.units:
             self.def_man.units = self.units
@@ -352,10 +353,6 @@ class Village:
         if not self.game_data:
             return
 
-        if not self.area:
-            self.area = Map(wrapper=self.wrapper, village_id=self.village_id)
-        self.area.get_map()
-
 
         self.attack_manager.target_high_points = self.get_config(
             section="farms", parameter="attack_higher_points", default=False
@@ -445,11 +442,11 @@ class Village:
                 break
 
         if not forced_peace and self.units.can_attack:
-            if not self.area:
-                self.area = Map(wrapper=self.wrapper, village_id=self.village_id)
-            self.area.get_map()
+            if not self.map:
+                self.map = Map(wrapper=self.wrapper, village_id=self.village_id)
+            self.map.get_map()
 
-            if self.area.villages:
+            if self.map.villages:
                 self.units.can_scout = self.get_config(
                     section="farms", parameter="force_scout_if_available", default=True
                 )
@@ -534,7 +531,7 @@ class Village:
     def set_cache_vars(self):
         village_entry = {
             "name": self.game_data["village"]["name"],
-            "public": self.area.in_cache(self.village_id) if self.area else None,
+            "public": self.map.in_cache(self.village_id) if self.map else None,
             "resources": self.resource_manager.actual,
             "required_resources": self.resource_manager.requested,
             "available_troops": self.units.troops,
