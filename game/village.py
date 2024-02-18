@@ -61,8 +61,8 @@ class Village:
             village_id=self.village_id,
             troopmanager=self.units,
             map=self.map,
+            report_manager=self.report_manager,
         )
-        self.attack_manager.report_manager = self.report_manager
 
     def run(self, config=None):
         self.config = config
