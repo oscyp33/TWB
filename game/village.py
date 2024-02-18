@@ -10,7 +10,6 @@ from core.templates import TemplateManager
 from core.twstats import TwStats
 from game.attack import AttackManager
 from game.buildingmanager import BuildingManager
-from game.config_manager import ConfigManager
 from game.defence_manager import DefenceManager
 from game.map import Map
 from game.reports import ReportManager
@@ -29,7 +28,7 @@ class Village:
     force_troops = False
     area = None
     snob_man = None
-    attack = None
+    attack_manager = None
     def_man = None
     report_manager = None
     config = None
@@ -38,7 +37,6 @@ class Village:
     twp = TwStats()
 
     def __init__(self, village_id=None, wrapper=None):
-        # self.config = ConfigManager("config.json")
         self.entry = None
         self.disabled_units = []
         self.data = None
@@ -52,6 +50,13 @@ class Village:
         self.report_manager = ReportManager(
             wrapper=self.wrapper, village_id=self.village_id
         )
+        self.attack_manager = AttackManager(
+            wrapper=self.wrapper,
+            village_id=self.village_id,
+            troopmanager=self.units,
+            map=self.area,
+        )
+        self.attack_manager.report_manager = self.report_manager
 
     def run(self, config=None):
         self.config = config
@@ -351,49 +356,41 @@ class Village:
             self.area = Map(wrapper=self.wrapper, village_id=self.village_id)
         self.area.get_map()
 
-        if not self.attack:
-            self.attack = AttackManager(
-                wrapper=self.wrapper,
-                village_id=self.village_id,
-                troopmanager=self.units,
-                map=self.area,
-            )
-            self.attack.report_manager = self.report_manager
 
-        self.attack.target_high_points = self.get_config(
+        self.attack_manager.target_high_points = self.get_config(
             section="farms", parameter="attack_higher_points", default=False
         )
-        self.attack.farm_min_points = self.get_config(
+        self.attack_manager.farm_min_points = self.get_config(
             section="farms", parameter="min_points", default=24
         )
-        self.attack.farm_max_points = self.get_config(
+        self.attack_manager.farm_max_points = self.get_config(
             section="farms", parameter="max_points", default=1080
         )
-        self.attack.farm_radius = self.get_config(
+        self.attack_manager.farm_radius = self.get_config(
             section="farms", parameter="search_radius", default=50
         )
-        self.attack.farm_default_wait = self.get_config(
+        self.attack_manager.farm_default_wait = self.get_config(
             section="farms", parameter="default_away_time", default=1200
         )
-        self.attack.farm_high_prio_wait = self.get_config(
+        self.attack_manager.farm_high_prio_wait = self.get_config(
             section="farms", parameter="full_loot_away_time", default=1800
         )
-        self.attack.farm_low_prio_wait = self.get_config(
+        self.attack_manager.farm_low_prio_wait = self.get_config(
             section="farms", parameter="low_loot_away_time", default=7200
         )
         if self.entry:
-            self.attack.template = self.entry["farm"]
+            self.attack_manager.template = self.entry["farm"]
         if (
             self.get_config(section="farms", parameter="farm", default=False)
             # and not self.def_man.under_attack todo fix and add to config
         ):
-            self.attack.extra_farm = self.get_village_config(
+            self.attack_manager.extra_farm = self.get_village_config(
                 self.village_id, parameter="additional_farms", default=[]
             )
-            self.attack.max_farms = self.get_config(
+            self.attack_manager.max_farms = self.get_config(
                 section="farms", parameter="max_farms", default=25
             )
-            self.attack.run()
+            self.attack_manager.run()
 
     def manage_gathering(self):
         if not self.game_data:
@@ -459,9 +456,9 @@ class Village:
 
                 if forced_peace_today:
                     self.logger.info("Forced peace time coming up today!")
-                    self.attack.forced_peace_time = forced_peace_today_start
+                    self.attack_manager.forced_peace_time = forced_peace_today_start
 
-                self.attack.run()
+                self.attack_manager.run()
 
     def handle_quests(self):
         if not self.game_data:

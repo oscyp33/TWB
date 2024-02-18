@@ -33,17 +33,15 @@ class Hunter:
         lowest = None
         for item in self.schedule:
             wait = time.time() + sleep
-            if item - self.window < wait:
-                if not lowest or item < lowest:
-                    lowest = item
+            if item - self.window < wait and not lowest or item < lowest:
+                lowest = item
         return lowest
 
     def troops_in_village(self, source=None, troops={}):
-        if source:
-            if self.villages[source].attack.has_troops_available(troops):
-                return source
+        if source and self.villages[source].attack.has_troops_available(troops):
+            return source
         for v in self.villages:
-            if v.attack.has_troops_available(troops):
+            if v.attack_manager.has_troops_available(troops):
                 return v
 
     def send_attack_chain(
@@ -53,7 +51,7 @@ class Hunter:
         attack_set = []
         self.logger.info("Nearing timing window, preparing %d attacks" % len(data))
         for attack in data:
-            result, duration = self.attack(source, item, troops=attack)
+            result, _ = self.attack(source, item, troops=attack)
             attack_set.append(result)
         self.wrapper.priority_mode = True
         while time.time() < exact_send_time:
@@ -93,7 +91,7 @@ class Hunter:
         conf = self.wrapper.post_url(url=confirm_url, data=pre_data)
         if '<div class="error_box">' in conf.text:
             return False
-        duration = Extractor.attack_duration(conf)
+        self.duration = Extractor.attack_duration(conf)
         confirm_data = {}
         for u in Extractor.attack_form(conf):
             k, v = u
@@ -108,7 +106,7 @@ class Hunter:
         if "x" not in confirm_data:
             confirm_data["x"] = x
 
-        return confirm_data, duration
+        return confirm_data, self.duration
 
     def send_attack(self, source, data):
         return self.wrapper.get_api_action(
@@ -136,7 +134,7 @@ class Hunter:
         conf = self.wrapper.post_url(url=confirm_url, data=pre_data)
         if '<div class="error_box">' in conf.text:
             return False
-        duration = Extractor.attack_duration(conf)
+        self.duration = Extractor.attack_duration(conf)
 
         confirm_data = {}
         for u in Extractor.attack_form(conf):
