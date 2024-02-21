@@ -8,12 +8,15 @@ import traceback
 
 import coloredlogs
 
+from controllers.word_controller import WorldController
 from core.extractors import Extractor
 from core.request import WebWrapper
 from game.config_manager import ConfigManager
 from game.village import Village
-from helpers.helpers import internet_online, print_sleep_info
+from helpers.internet_connection import internet_online
+from helpers.sleep_time_manager import SleepTimeManager
 from manager import VillageManager
+from model.world_model import WorldModel
 
 coloredlogs.install(
     level=logging.DEBUG if "-q" not in sys.argv else logging.INFO,
@@ -46,6 +49,11 @@ class TWB:
             reporter_enabled=self.config["reporting"]["enabled"],
             reporter_constr=self.config["reporting"]["connection_string"],
         )
+        world_model = WorldModel()
+        self.world_controller = WorldController(
+            world_model=world_model, config=self.config
+        )
+        self.sleep_manager = SleepTimeManager(config=self.config, world_model=world_model)
         self.wrapper.start()
 
     def run(self):
@@ -100,25 +108,13 @@ class TWB:
 
         return changed, config
 
-    def is_active_hours(self, config):
-        active_h = [int(x) for x in config["bot"]["active_hours"].split("-")]
-        get_h = time.localtime().tm_hour
-        return get_h in range(active_h[0], active_h[1])
-
     def wait_for_internet(self):
         logging.info("Internet seems to be down, waiting till it's back online...")
-        sleep_time = self.calculate_sleep_time()
-        print_sleep_info(sleep_time)
-        time.sleep(sleep_time)
+        self.sleep_manager.calculate_sleep_time()
+        self.sleep_manager.print_sleep_info()
+        time.sleep(self.sleep_manager.sleep_time)
 
-    def calculate_sleep_time(self):
-        sleep = 0
-        if self.is_active_hours(self.config):
-            sleep = self.config["bot"]["active_delay"]
-        elif self.config["bot"]["inactive_still_active"]:
-            sleep = self.config["bot"]["inactive_delay"]
 
-        return sleep + random.randint(20, 120)
 
     def run_villages(self, config):
         _, res_text, config = self.get_overview(config)
@@ -165,8 +161,8 @@ class TWB:
             )
 
     def sleep_between_runs(self):
-        sleep_time = self.calculate_sleep_time()
-        print_sleep_info(sleep_time)
+        sleep_time = self.sleep_manager.calculate_sleep_time()
+        self.sleep_manager.print_sleep_info()
         VillageManager.farm_manager(verbose=True)
         time.sleep(sleep_time)
 
