@@ -1,10 +1,12 @@
 import re
+from typing import List, Dict, Optional, Tuple
+
 from bs4 import BeautifulSoup
-from typing import List, Dict, Optional
 
 
 class Point:
     """Represents a point with x and y coordinates."""
+
     def __init__(self, x: int, y: int):
         self.x = x
         self.y = y
@@ -12,6 +14,7 @@ class Point:
 
 class Village:
     """Represents a village with its name, coordinates, and continent."""
+
     def __init__(self, village_id: str, village_str: str):
         """
         Initializes a Village object.
@@ -24,7 +27,7 @@ class Village:
             ValueError: If the village string format is invalid.
         """
         self.village_id = village_id
-        match = re.match(r'(.+)\s\((\d+)\|(\d+)\)\s(.+)', village_str)
+        match = re.match(r"(.+)\s\((\d+)\|(\d+)\)\s(.+)", village_str)
         if match:
             self.name = match.group(1)
             self.coordinates = Point(int(match.group(2)), int(match.group(3)))
@@ -32,22 +35,23 @@ class Village:
         else:
             raise ValueError("Invalid village string format")
 
-    def parse_coordinates(self, coords_str: str) -> Point:
+    def parse_coordinates(self, cords: str) -> Point:
         """
         Parse the coordinates string and return a Point object.
 
         Args:
-            coords_str (str): The string representation of coordinates.
+            cords (str): The string representation of coordinates.
 
         Returns:
             Point: The Point object with parsed coordinates.
         """
-        x, y = map(int, coords_str.strip('()').split('|'))
+        x, y = map(int, cords.strip("()").split("|"))
         return Point(x, y)
 
 
 class Storage:
     """Represents storage resources (wood, stone, iron)."""
+
     def __init__(self, resources: str):
         """
         Initializes a Storage object.
@@ -56,12 +60,13 @@ class Storage:
             resources (str): The string representation of resources.
                 Format: 'wood stone iron'.
         """
-        resources = resources.replace('.', '')
+        resources = resources.replace(".", "")
         self.wood, self.stone, self.iron = map(int, resources.split())
 
 
 class Farm:
     """Represents farm population."""
+
     def __init__(self, population_str: str):
         """
         Initializes a Farm object.
@@ -70,13 +75,14 @@ class Farm:
             population_str (str): The string representation of population.
                 Format: 'current/maximum'.
         """
-        current, maximum = map(int, population_str.split('/'))
+        current, maximum = map(int, population_str.split("/"))
         self.current = current
         self.maximum = maximum
 
 
 class OverviewPage:
     """Represents the overview page with village data and world options."""
+
     def __init__(self, wrapper):
         """
         Initializes an OverviewPage object.
@@ -105,21 +111,26 @@ class OverviewPage:
                 if row.find_all("td"):
                     cells = row.find_all("td")
                     village_id = cells[0].contents[1].attrs["data-id"]
-                    village = Village(village_id, cells[0].text.strip())
+                    name, coordinates, continent = self._extract_name_cords_continent(
+                        cells[0].text.strip()
+                    )
                     points = cells[1].text.strip()
                     storage = Storage(cells[2].text.strip())
                     storage_capacity = cells[3].text.strip()
                     farm = Farm(cells[4].text.strip())
-                    self.production_table_data.append({
-                        "id": village_id,
-                        "village": village,
-                        "points": points,
-                        "storage_capacity": storage_capacity,
-                        "storage": storage,
-                        "farm": farm
-                    })
+                    village = Village(village_id, name, coordinates, continent)
+                    self.production_table_data.append(
+                        {
+                            "id": village_id,
+                            "village": village,
+                            "points": points,
+                            "storage_capacity": storage_capacity,
+                            "storage": storage,
+                            "farm": farm,
+                        }
+                    )
 
-    def parse_header_info(self):
+    def parse_header_info(self) -> None:
         """Parse header information to get world options."""
         text = self.result_get.text
 
@@ -127,3 +138,13 @@ class OverviewPage:
         self.knight = "screen=statue" in text
         self.boosters = "screen=inventory" in text
         self.quests = "Quests.setQuestData" in text
+
+    def _extract_name_cords_continent(self, cell_value: str) -> Tuple[str, Point, str]:
+        match = re.match(r"(.+)\s\((\d+)\|(\d+)\)\s(.+)", cell_value)
+        if match:
+            name = match.group(1)
+            coordinates = Point(int(match.group(2)), int(match.group(3)))
+            continent = match.group(4)
+            return name, coordinates, continent
+        else:
+            raise ValueError("Invalid village string format")
