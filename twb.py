@@ -1,22 +1,20 @@
 import logging
 import os
 import pathlib
-import random
 import sys
 import time
 import traceback
 
 import coloredlogs
 
+from controllers.sleep_time_manager import SleepTimeManager
 from controllers.word_controller import WorldController
-from core.extractors import Extractor
 from core.request import WebWrapper
 from game.config_manager import ConfigManager
 from game.village import Village
 from helpers.internet_connection import internet_online
-from helpers.sleep_time_manager import SleepTimeManager
 from manager import VillageManager
-from model.world_model import WorldModel
+from models.world_model import WorldModel
 
 coloredlogs.install(
     level=logging.DEBUG if "-q" not in sys.argv else logging.INFO,
@@ -51,9 +49,13 @@ class TWB:
         )
         world_model = WorldModel()
         self.world_controller = WorldController(
-            world_model=world_model, config=self.config
+            world_model=world_model,
+            config_manager=self.config_manager,
+            wrapper=self.wrapper,
         )
-        self.sleep_manager = SleepTimeManager(config=self.config, world_model=world_model)
+        self.sleep_manager = SleepTimeManager(
+            config=self.config, world_model=world_model
+        )
         self.wrapper.start()
 
     def run(self):
@@ -69,25 +71,6 @@ class TWB:
                 self.config_manager.update_config_if_needed(config)
                 self.run_villages(config)
                 self.sleep_between_runs()
-
-    def get_overview(self, config):
-        result_get = self.wrapper.get_url("game.php?screen=overview_villages")
-
-        has_new_villages = False
-        if config["bot"].get("add_new_villages", False):
-            self.result_villages = Extractor.village_ids_from_overview(result_get)
-            for found_vid in self.result_villages:
-                if found_vid not in config["villages"]:
-                    logging.info(
-                        "Village %s was found but no config entry was found. Adding automatically"
-                        % found_vid
-                    )
-                    self.config_manager.add_village(vid=found_vid)
-                    has_new_villages = True
-            if has_new_villages:
-                return self.get_overview(self.config())
-
-        return self.result_villages, result_get, config
 
     def get_world_options(self, overview_page, config):
         options_to_check = [
@@ -114,10 +97,8 @@ class TWB:
         self.sleep_manager.print_sleep_info()
         time.sleep(self.sleep_manager.sleep_time)
 
-
-
     def run_villages(self, config):
-        _, res_text, config = self.get_overview(config)
+        _, res_text, config = self.world_controller.get_overview(config)
         has_changed, new_cf = self.get_world_options(res_text.text, config)
         if has_changed:
             logging.info("Updated world options")

@@ -9,7 +9,6 @@ class SleepTimeManager:
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.sleep_time = 0
-        self.sleep_time_increase = self.config["sleep_time_increase"]
         self.date_time_next = None
 
     def get_sleep_time(self):

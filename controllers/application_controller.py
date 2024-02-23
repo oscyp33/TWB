@@ -7,7 +7,7 @@ import threading
 from controllers.word_controller import WorldController
 from game.config_manager import ConfigManager
 from helpers.internet_connection import internet_online
-from model.world_model import WorldModel
+from models.world_model import WorldModel
 
 
 class ApplicationController:
@@ -30,7 +30,7 @@ class ApplicationController:
         self.should_run.set()
         self.config_manager = ConfigManager()
         self.config = self.config_manager.config
-        self.world_controller = WorldController(world_model=WorldModel(), config=self.config)
+        self.world_controller = WorldController(world_model=WorldModel(), config_manager=self.config_manager)
 
         asyncio.run(self.run())
 

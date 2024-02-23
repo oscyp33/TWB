@@ -1,6 +1,6 @@
 from typing import OrderedDict
 
-from model.village_model import VillageModel
+from models.village_model import VillageModel
 
 
 class WorldModel:
