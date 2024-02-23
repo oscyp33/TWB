@@ -12,58 +12,6 @@ class Point:
         self.y = y
 
 
-class Village:
-    """Represents a village with its name, coordinates, and continent."""
-
-    def __init__(self, village_id: str, village_str: str):
-        """
-        Initializes a Village object.
-
-        Args:
-            village_id (str): The ID of the village.
-            village_str (str): The string representation of the village.
-
-        Raises:
-            ValueError: If the village string format is invalid.
-        """
-        self.village_id = village_id
-        match = re.match(r"(.+)\s\((\d+)\|(\d+)\)\s(.+)", village_str)
-        if match:
-            self.name = match.group(1)
-            self.coordinates = Point(int(match.group(2)), int(match.group(3)))
-            self.continent = match.group(4)
-        else:
-            raise ValueError("Invalid village string format")
-
-    def parse_coordinates(self, cords: str) -> Point:
-        """
-        Parse the coordinates string and return a Point object.
-
-        Args:
-            cords (str): The string representation of coordinates.
-
-        Returns:
-            Point: The Point object with parsed coordinates.
-        """
-        x, y = map(int, cords.strip("()").split("|"))
-        return Point(x, y)
-
-
-class Storage:
-    """Represents storage resources (wood, stone, iron)."""
-
-    def __init__(self, resources: str):
-        """
-        Initializes a Storage object.
-
-        Args:
-            resources (str): The string representation of resources.
-                Format: 'wood stone iron'.
-        """
-        resources = resources.replace(".", "")
-        self.wood, self.stone, self.iron = map(int, resources.split())
-
-
 class Farm:
     """Represents farm population."""
 
@@ -78,6 +26,66 @@ class Farm:
         current, maximum = map(int, population_str.split("/"))
         self.current = current
         self.maximum = maximum
+
+
+class Storage:
+    """Represents storage resources (wood, stone, iron)."""
+
+    def __init__(self, resources: str, capacity: str):
+        """
+        Initializes a Storage object.
+
+        Args:
+            resources (str): The string representation of resources.
+                Format: 'wood stone iron'.
+        """
+        resources = resources.replace(".", "")
+        self.wood, self.stone, self.iron = map(int, resources.split())
+
+
+class Village:
+    """Represents a village with its name, coordinates, and continent."""
+
+    def __init__(
+        self,
+        village_id: str,
+        village_name: str,
+        coordinates: Point,
+        continent: str,
+        points: str,
+        storage: Storage,
+        farm: Farm,
+    ):
+        """
+        Initializes a Village object.
+
+        Args:
+            village_id (str): The ID of the village.
+            village_str (str): The string representation of the village.
+
+        Raises:
+            ValueError: If the village string format is invalid.
+        """
+        self.village_id = village_id
+        self.village_name = village_name
+        self.coordinates = coordinates
+        self.continent = continent
+        self.points = points
+        self.storage = storage
+        self.farm = farm
+
+    def parse_coordinates(self, cords: str) -> Point:
+        """
+        Parse the coordinates string and return a Point object.
+
+        Args:
+            cords (str): The string representation of coordinates.
+
+        Returns:
+            Point: The Point object with parsed coordinates.
+        """
+        x, y = map(int, cords.strip("()").split("|"))
+        return Point(x, y)
 
 
 class OverviewPage:
@@ -115,10 +123,14 @@ class OverviewPage:
                         cells[0].text.strip()
                     )
                     points = cells[1].text.strip()
-                    storage = Storage(cells[2].text.strip())
+                    resources = cells[2].text.strip()
                     storage_capacity = cells[3].text.strip()
+
+                    storage = Storage(resources, storage_capacity)
                     farm = Farm(cells[4].text.strip())
-                    village = Village(village_id, name, coordinates, continent)
+                    village = Village(
+                        village_id, name, coordinates, continent, points, storage, farm
+                    )
                     self.production_table_data.append(
                         {
                             "id": village_id,
@@ -139,7 +151,9 @@ class OverviewPage:
         self.boosters = "screen=inventory" in text
         self.quests = "Quests.setQuestData" in text
 
-    def _extract_name_cords_continent(self, cell_value: str) -> Tuple[str, Point, str]:
+    @staticmethod
+    def _extract_name_cords_continent(cell_value: str) -> Tuple[str, Point, str]:
+        """Extract name, coordinates and continent from cell value."""
         match = re.match(r"(.+)\s\((\d+)\|(\d+)\)\s(.+)", cell_value)
         if match:
             name = match.group(1)
