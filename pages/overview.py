@@ -1,5 +1,5 @@
 import re
-from typing import List, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from bs4 import BeautifulSoup
 
@@ -37,10 +37,13 @@ class Storage:
 
         Args:
             resources (str): The string representation of resources.
-                Format: 'wood stone iron'.
+                Format: 'wood,stone,iron'.
+            capacity (str): The string representation of capacity.
+                Format: 'capacity'.
         """
         resources = resources.replace(".", "")
         self.wood, self.stone, self.iron = map(int, resources.split())
+        self.capacity = int(capacity)
 
 
 class Village:
@@ -61,7 +64,12 @@ class Village:
 
         Args:
             village_id (str): The ID of the village.
-            village_str (str): The string representation of the village.
+            village_name (str): The name of the village.
+            coordinates (Point): The coordinates of the village.
+            continent (str): The continent of the village.
+            points (str): The points of the village.
+            storage (Storage): The storage of the village.
+            farm (Farm): The farm of the village.
 
         Raises:
             ValueError: If the village string format is invalid.
@@ -70,7 +78,7 @@ class Village:
         self.village_name = village_name
         self.coordinates = coordinates
         self.continent = continent
-        self.points = points
+        self.points = int(points.replace(".", ""))
         self.storage = storage
         self.farm = farm
 
@@ -107,7 +115,7 @@ class OverviewPage:
         self.soup = BeautifulSoup(self.result_get.text, "html.parser")
         self.header_info = self.soup.find("table", {"id": "header_info"})
         self.production_table = self.soup.find("table", {"id": "production_table"})
-        self.production_table_data: List[Dict[str, any]] = []
+        self.production_table_data: Dict[str, Village] = {}
         self.parse_production_table()
         self.parse_header_info()
 
@@ -131,16 +139,7 @@ class OverviewPage:
                     village = Village(
                         village_id, name, coordinates, continent, points, storage, farm
                     )
-                    self.production_table_data.append(
-                        {
-                            "id": village_id,
-                            "village": village,
-                            "points": points,
-                            "storage_capacity": storage_capacity,
-                            "storage": storage,
-                            "farm": farm,
-                        }
-                    )
+                    self.production_table_data[village_id] = village
 
     def parse_header_info(self) -> None:
         """Parse header information to get world options."""

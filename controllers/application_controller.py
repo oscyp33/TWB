@@ -5,6 +5,7 @@ import sys
 import threading
 
 from controllers.word_controller import WorldController
+from core.request import WebWrapper
 from game.config_manager import ConfigManager
 from helpers.internet_connection import internet_online
 from models.world_model import WorldModel
@@ -20,7 +21,9 @@ class ApplicationController:
         handler.setLevel(logging.INFO)
 
         # Utwórz formatter i dodaj go do handlera
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
         handler.setFormatter(formatter)
 
         # Dodaj handler do loggera
@@ -30,7 +33,19 @@ class ApplicationController:
         self.should_run.set()
         self.config_manager = ConfigManager()
         self.config = self.config_manager.config
-        self.world_controller = WorldController(world_model=WorldModel(), config_manager=self.config_manager)
+        self.wrapper = WebWrapper(
+            self.config["server"]["endpoint"],
+            server=self.config["server"]["server"],
+            endpoint=self.config["server"]["endpoint"],
+            reporter_enabled=self.config["reporting"]["enabled"],
+            reporter_constr=self.config["reporting"]["connection_string"],
+        )
+        self.wrapper.start()
+        self.world_controller = WorldController(
+            world_model=WorldModel(),
+            config_manager=self.config_manager,
+            wrapper=self.wrapper,
+        )
 
         asyncio.run(self.run())
 

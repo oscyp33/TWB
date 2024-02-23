@@ -47,6 +47,7 @@ class TWB:
             reporter_enabled=self.config["reporting"]["enabled"],
             reporter_constr=self.config["reporting"]["connection_string"],
         )
+        self.wrapper.start()
         world_model = WorldModel()
         self.world_controller = WorldController(
             world_model=world_model,
@@ -56,7 +57,7 @@ class TWB:
         self.sleep_manager = SleepTimeManager(
             config=self.config, world_model=world_model
         )
-        self.wrapper.start()
+
 
     def run(self):
         for vid in self.config["villages"]:
