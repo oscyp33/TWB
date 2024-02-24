@@ -113,7 +113,9 @@ class TWB:
         template = None
         root_directory = os.path.dirname(__file__)
         if os.path.exists(os.path.join(root_directory, "config.example.json")):
-            with open(os.path.join(root_directory, "config.example.json"), "r") as template_file:
+            with open(
+                os.path.join(root_directory, "config.example.json"), "r"
+            ) as template_file:
                 template = json.load(
                     template_file, object_pairs_hook=collections.OrderedDict
                 )
@@ -167,9 +169,6 @@ class TWB:
                         % found_vid
                     )
                     self.add_village(vid=found_vid)
-                    has_new_villages = True
-            if has_new_villages:
-                return self.get_overview(self.config())
 
         return overview_page, config
 
@@ -299,38 +298,42 @@ class TWB:
                             % village.village_id
                         )
                         continue
-                    if not rm:
-                        rm = vil.rep_man
+                    if not self.report_manager:
+                        self.report_manager = village.report_manager
                     else:
-                        vil.rep_man = rm
+                        village.report_manager = self.report_manager
                     if (
                         "auto_set_village_names" in config["bot"]
                         and config["bot"]["auto_set_village_names"]
                     ):
                         template = config["bot"]["village_name_template"]
-                        fs = "%0" + str(config["bot"]["village_name_number_length"]) + "d"
+                        fs = (
+                            "%0"
+                            + str(config["bot"]["village_name_number_length"])
+                            + "d"
+                        )
                         num_pad = fs % vnum
                         template = template.replace("{num}", num_pad)
-                        vil.village_set_name = template
+                        village.village_set_name = template
 
-                    vil.run(config=config, first_run=vnum == 1)
+                    village.run(config=config)
                     if (
-                        vil.get_config(
+                        village.get_config(
                             section="units", parameter="manage_defence", default=False
                         )
-                        and vil.def_man
+                        and village.def_man
                     ):
-                        defense_states[vil.village_id] = (
-                            vil.def_man.under_attack
-                            if vil.def_man.allow_support_recv
+                        defense_states[village.village_id] = (
+                            village.def_man.under_attack
+                            if village.def_man.allow_support_recv
                             else False
                         )
                     vnum += 1
 
                 if len(defense_states) and config["farms"]["farm"]:
-                    for vil in self.villages:
+                    for village in self.villages:
                         print("Syncing attack states")
-                        vil.def_man.my_other_villages = defense_states
+                        village.def_man.my_other_villages = defense_states
 
                 sleep = 0
                 if self.is_active_hours(config=config):
@@ -346,7 +349,8 @@ class TWB:
 
                 VillageManager.farm_manager(verbose=True)
                 print(
-                    "Dead for %f.2 minutes (next run at: %s)" % (sleep / 60, dt_next.time())
+                    "Dead for %f.2 minutes (next run at: %s)"
+                    % (sleep / 60, dt_next.time())
                 )
                 sys.stdout.flush()
                 time.sleep(sleep)
@@ -381,4 +385,3 @@ for x in range(3):
         t.wrapper.reporter.report(0, "TWB_EXCEPTION", str(e))
         print("I crashed :(   %s" % str(e))
         traceback.print_exc()
-        pass

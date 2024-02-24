@@ -8,16 +8,16 @@ class Extractor:
     def village_data(res):
         if type(res) != str:
             res = res.text
-        grabber = re.search(r'var village = (.+);', res)
+        grabber = re.search(r"var village = (.+);", res)
         if grabber:
             data = grabber.group(1)
             return json.loads(data, strict=False)
 
     @staticmethod
     def game_state(res):
-        if type(res) != str:
+        if res is not None and not isinstance(res, str):
             res = res.text
-        grabber = re.search(r'TribalWars\.updateGameData\((.+?)\);', res)
+        grabber = re.search(r"TribalWars\.updateGameData\((.+?)\);", res)
         if grabber:
             data = grabber.group(1)
             return json.loads(data, strict=False)
@@ -26,7 +26,7 @@ class Extractor:
     def building_data(res):
         if type(res) != str:
             res = res.text
-        dre = re.search(r'(?s)BuildingMain.buildings = (\{.+?\});', res)
+        dre = re.search(r"(?s)BuildingMain.buildings = (\{.+?\});", res)
         if dre:
             return json.loads(dre.group(1), strict=False)
 
@@ -36,12 +36,12 @@ class Extractor:
     def get_quests(res):
         if type(res) != str:
             res = res.text
-        get_quests = re.search(r'Quests.setQuestData\((\{.+?\})\);', res)
+        get_quests = re.search(r"Quests.setQuestData\((\{.+?\})\);", res)
         if get_quests:
             result = json.loads(get_quests.group(1), strict=False)
             for quest in result:
                 data = result[quest]
-                if data['goals_completed'] == data['goals_total']:
+                if data["goals_completed"] == data["goals_total"]:
                     return quest
         return None
 
@@ -49,12 +49,12 @@ class Extractor:
     def get_quest_rewards(res):
         if type(res) != str:
             res = res.text
-        get_rewards = re.search(r'RewardSystem\.setRewards\(\s*(\[\{.+?\}\]),', res)
+        get_rewards = re.search(r"RewardSystem\.setRewards\(\s*(\[\{.+?\}\]),", res)
         rewards = []
         if get_rewards:
             result = json.loads(get_rewards.group(1), strict=False)
             for reward in result:
-                if reward['status'] == "unlocked":
+                if reward["status"] == "unlocked":
                     rewards.append(reward)
         # Return all off them
         return rewards
@@ -63,7 +63,7 @@ class Extractor:
     def map_data(res):
         if type(res) != str:
             res = res.text
-        data = re.search(r'(?s)TWMap.sectorPrefech = (\[(.+?)\]);', res)
+        data = re.search(r"(?s)TWMap.sectorPrefech = (\[(.+?)\]);", res)
         if data:
             result = json.loads(data.group(1), strict=False)
             return result
@@ -72,7 +72,7 @@ class Extractor:
     def smith_data(res):
         if type(res) != str:
             res = res.text
-        data = re.search(r'(?s)BuildingSmith.techs = (\{.+?\});', res)
+        data = re.search(r"(?s)BuildingSmith.techs = (\{.+?\});", res)
         if data:
             result = json.loads(data.group(1), strict=False)
             return result
