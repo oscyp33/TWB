@@ -32,6 +32,7 @@ import traceback
 import coloredlogs
 import requests
 
+from core.exceptions import UnsupportedPythonVersion
 from core.notification import Notification
 from core.updater import check_update
 from core.filemanager import FileManager
